@@ -1,9 +1,13 @@
 #!/bin/bash
 
 size=0
+SIZE=0
+find_nr=0
 verbose=false
 dry_run=false
 output=false
+DELETE_LIST=()
+sort_type="time"
 out_file="/dev/stdout"
 
 usage() {
@@ -12,6 +16,7 @@ usage() {
   echo
   echo "-s, --size      define max total size"
   echo "--dry-run       display files for deletion and exit"
+  echo "--sort          specify sort type, one of [file|time]"
   echo "-o, --output    specify file to output files list"
   echo "-v, --verbose   be more verbose"
   echo "-h, --help      print this help"
@@ -69,7 +74,47 @@ delete_find() {
   done
 }
 
-OPTS=$(getopt --long 'help,verbose,dry-run,size:,output::' -n "$(basename "$0")" -o 'vhos:' -- "$@")
+find_files() {
+  IFS=$'\n'
+  if [ $1 = "time" ]; then
+    FIND_LIST=( $(find $DIRECTORY -type f -printf '%T+ %p\n' | sort | cut -d' ' -f2-) )
+    for file_name in ${FIND_LIST[@]} 
+    do
+      file_size=$(stat -c %s $file_name)
+      SIZE=$(($SIZE+$file_size))
+      
+      if [ "$SIZE" -lt "$size" ]; then
+        DELETE_LIST+=($file_name)
+        find_nr=$(($find_nr+1))
+      fi
+    done
+  fi
+
+  if [ "$1" = "file" ]; then
+    for file_name in $(find $DIRECTORY -type f)
+    do
+      file_date=$(echo "$file_name" | sed -nre 's/.*?_([0-9]{8})[0-9]*\(.*/\1/p')
+      FIND_LIST+=("$file_date $file_name")
+    done
+
+    SORTED_FIND_LIST=($(sort -n <<< "${FIND_LIST[*]}"))
+
+    for line in ${SORTED_FIND_LIST[@]}
+    do
+      file_name="$(echo $line | cut -d' ' -f2-)"
+      file_size=$(stat -c %s "$file_name")
+      SIZE=$(("$SIZE"+"$file_size"))
+
+      if [ "$SIZE" -lt "$size" ]; then
+        DELETE_LIST+=("$file_name")
+        find_nr=$(($find_nr+1))
+      fi
+    done
+  fi
+  unset IFS
+}
+
+OPTS=$(getopt --long 'help,verbose,dry-run,size:,output::,sort::' -n "$(basename "$0")" -o 'vhos:' -- "$@")
 
 eval set -- "$OPTS"
 unset OPTS
@@ -89,6 +134,16 @@ while [[ $# -gt 0 ]]; do
     '--dry-run')
       dry_run=true
       shift
+      continue
+      ;;
+    
+    '--sort')
+      if [[ ! $2 =~ ^file|time$ ]]; then
+        echo "Wrong sort type, use [file|time]"
+        exit 1
+      fi
+      sort_type=$2
+      shift 2
       continue
       ;;
 
@@ -140,48 +195,12 @@ if [ ! -d $DIRECTORY ]; then
   exit 1
 fi
 
-SIZE=0
-DELETE_LIST=()
-find_nr=0
-
 if [ $size -eq 0 ]; then
   echo "Value 0 of size is not permitted, or maybe you forget to set option for size"
   exit 1  
 fi
 
-#IFS=$'\n'
-#FIND_LIST=( $(find $DIRECTORY -type f -printf '%T+ %p\n' | sort | cut -d' ' -f2-) )
-#for file_name in ${FIND_LIST[@]} 
-#do
-#  file_size=$(stat -c %s $file_name)
-#  SIZE=$(($SIZE+$file_size))
-#  
-#  if [ "$SIZE" -lt "$size" ]; then
-#    DELETE_LIST+=($file_name)
-#    find_nr=$(($find_nr+1))
-#  fi
-#done
-
-IFS=$'\n'
-for file_name in $(find $DIRECTORY -type f)
-do
-  file_date=$(echo "$file_name" | sed -nre 's/.*?_([0-9]{8})[0-9]*\(.*/\1/p')
-  FIND_LIST+=("$file_date $file_name")
-done
-
-SORTED_FIND_LIST=($(sort -n <<< "${FIND_LIST[*]}"))
-
-for line in ${SORTED_FIND_LIST[@]}
-do
-  file_name="$(echo $line | cut -d' ' -f2-)"
-  file_size=$(stat -c %s "$file_name")
-  SIZE=$(("$SIZE"+"$file_size"))
-
-  if [ "$SIZE" -lt "$size" ]; then
-    DELETE_LIST+=("$file_name")
-    find_nr=$(($find_nr+1))
-  fi
-done
+find_files $sort_type
 
 if $output || check_answer "We found $find_nr files for deletion, display the list? [Y/n]"; then
   display_find
