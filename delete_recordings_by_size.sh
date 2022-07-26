@@ -46,7 +46,8 @@ check_answer() {
 }
 
 display_find() {
-  for line in ${DELETE_LIST[@]}
+IFS=$'\n'  
+for line in ${DELETE_LIST[@]}
   do
     if $verbose; then
       ls -l $line >> "$out_file"
@@ -148,7 +149,8 @@ if [ $size -eq 0 ]; then
   exit 1  
 fi
 
-#FIND_LIST=( $(find $DIRECTORY -type f -printf '%T+ %p\n' | sort | awk '{print $2}') )
+#IFS=$'\n'
+#FIND_LIST=( $(find $DIRECTORY -type f -printf '%T+ %p\n' | sort | cut -d' ' -f2-) )
 #for file_name in ${FIND_LIST[@]} 
 #do
 #  file_size=$(stat -c %s $file_name)
@@ -160,24 +162,25 @@ fi
 #  fi
 #done
 
+IFS=$'\n'
 for file_name in $(find $DIRECTORY -type f)
 do
-  file_date=$(echo $file_name | sed -nre 's/.*?_([0-9]{14})\(.*/\1/p')
+  file_date=$(echo "$file_name" | sed -nre 's/.*?_([0-9]{8})[0-9]*\(.*/\1/p')
   FIND_LIST+=("$file_date $file_name")
+done
 
-  SORTED_FIND_LIST=($(sort -n -k1 <<< "${FIND_LIST[*]}"))
- 
-  for line in ${SORTED_FIND_LIST[@]}
-  do
-    file_name=$(echo $line | awk '{print $2}')
-    file_size=$(stat -c %s $file_name)
-    SIZE=$(($SIZE+$file_size))
+SORTED_FIND_LIST=($(sort -n <<< "${FIND_LIST[*]}"))
 
-    if [ "$SIZE" -lt "$size" ]; then
-      DELETE_LIST+=($file_name)
-      find_nr=$(($find_nr+1))
-    fi
-  done
+for line in ${SORTED_FIND_LIST[@]}
+do
+  file_name="$(echo $line | cut -d' ' -f2-)"
+  file_size=$(stat -c %s "$file_name")
+  SIZE=$(("$SIZE"+"$file_size"))
+
+  if [ "$SIZE" -lt "$size" ]; then
+    DELETE_LIST+=("$file_name")
+    find_nr=$(($find_nr+1))
+  fi
 done
 
 if $output || check_answer "We found $find_nr files for deletion, display the list? [Y/n]"; then
