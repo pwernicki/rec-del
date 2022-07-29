@@ -1,4 +1,9 @@
 #!/bin/bash
+#script name	:delete_recordings_by_size.sh
+#description	:This script deletes files by size
+#author		:Przemyslaw Wernicki 
+#email		:przemyslaw.wernicki@gmail.com
+#github		:https://github.com/pwernicki/rec-del.git
 
 size=0
 SIZE=0
